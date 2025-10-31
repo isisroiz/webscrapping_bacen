@@ -2,9 +2,16 @@ import re
 import requests
 import zipfile
 import io
-import os 
+import os
 import datetime
 import pandas as pd
+import unicodedata 
+import shutil 
+import chardet 
+
+# =======================================================
+# UTILS GERAIS
+# =======================================================
 
 def soma(a, b):
     """Retorna a soma de dois números."""
@@ -15,230 +22,318 @@ def criar_pasta(caminho):
     os.makedirs(caminho, exist_ok=True)
     print(f"Pasta criada/verificada: {caminho}")
 
-def baixar_e_extrair_zip(url, destino_pasta):
-    """Baixa o arquivo ZIP da URL e extrai o conteúdo para a pasta de destino."""
+def renomear_arquivos_extraidos(dest_dir, ano, mes):
+    """
+    Renomeia arquivos extraídos do ZIP para um padrão limpo:
+    ranking_AAAA-MM_mensal.csv ou ranking_AAAA-MM_acumulado.csv
+    """
+    for nome_original in os.listdir(dest_dir):
+        caminho_antigo = os.path.join(dest_dir, nome_original)
+        nome_limpo = unicodedata.normalize('NFKD', nome_original).encode('ascii', 'ignore').decode('ascii').lower()
+
+        if not os.path.isfile(caminho_antigo):
+            continue
+
+        ext = os.path.splitext(nome_original)[1].lower()
+        novo_nome = None
+        mes_str = str(mes).zfill(2)
+        ano_str = str(ano)
+
+        if "acumulado" in nome_limpo:
+            novo_nome = f"ranking_{ano_str}-{mes_str}_acumulado{ext}"
+
+        elif ext == '.csv' and "mensal" not in nome_limpo and "acumulado" not in nome_limpo:
+            novo_nome = f"ranking_{ano_str}-{mes_str}_mensal{ext}"
+
+        elif ext in ['.xlsx', '.xls']:
+            novo_nome = f"ranking_{ano_str}-{mes_str}{ext}"
+
+        if novo_nome:
+            caminho_novo = os.path.join(dest_dir, novo_nome)
+            try:
+                os.rename(caminho_antigo, caminho_novo)
+                print(f"✅ Renomeado: {nome_original} -> {novo_nome}")
+            except Exception as e:
+                print(f"❌ Erro ao renomear {nome_original}: {e}")
+        else:
+            print(f"⚠️ Ignorado: {nome_original}")
+            
+def detectar_encoding(caminho, amostra=40000):
+    """Detecta o encoding do arquivo."""
+    try:
+        with open(caminho, 'rb') as f:
+            return chardet.detect(f.read(amostra)).get('encoding', 'latin1')
+    except Exception:
+        return 'latin1'
+
+# =======================================================
+# DOWNLOAD E GERAÇÃO DE URL
+# =======================================================
+
+def baixar_e_extrair_zip(url, destino_pasta, ano, mes):
+    """Baixa o arquivo ZIP, extrai para pasta temp, renomeia e move."""
+    mes_str = str(mes).zfill(2)
+    ano_str = str(ano)
+
     print(f"Baixando ZIP de: {url}")
     resposta = requests.get(url)
-    
+
     if resposta.status_code == 200:
-        with zipfile.ZipFile(io.BytesIO(resposta.content)) as z:
-            z.extractall(destino_pasta)
-        print(f"Arquivos extraídos com sucesso em: {destino_pasta}")
-        return True
+        temp_dir = os.path.join(destino_pasta, f"temp_{ano_str}_{mes_str}")
+        os.makedirs(temp_dir, exist_ok=True)
+
+        try:
+            with zipfile.ZipFile(io.BytesIO(resposta.content)) as z:
+                z.extractall(temp_dir)
+            
+            renomear_arquivos_extraidos(temp_dir, ano, mes)
+
+            for arquivo in os.listdir(temp_dir):
+                origem = os.path.join(temp_dir, arquivo)
+                destino = os.path.join(destino_pasta, arquivo)
+                if not os.path.exists(destino):
+                    shutil.move(origem, destino)
+                else:
+                    print(f"⚠️ Já existe no destino: {arquivo}, ignorando movimento.")
+            
+            shutil.rmtree(temp_dir)
+
+            print(f"Arquivos extraídos e renomeados com sucesso em: {destino_pasta}")
+            return True
+        
+        except zipfile.BadZipFile:
+            print('❌ Erro: arquivo não é um ZIP válido.')
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+            return False
+        
+        except Exception as e:
+            print(f"❌ Erro na extração ou renomeação: {e}")
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+            return False
+
     else:
-        print(f"Erro ao baixar: Status Code {resposta.status_code}")
         return False
     
-
 def gerar_info_data(ano, mes):
+    """Gera e testa múltiplos padrões de URL do BACEN."""
     try:
         data = datetime.date(ano, mes, 1)
     except ValueError:
-        return None # Data inválida
-
-    mes_num_2d = data.strftime("%m") # Ex: '01', '09'
-    ano_str = str(ano)
-    
-    # Padrão identificado: Letra fixa (f) + ANO + MÊS 
-    prefixo = f'ESTATCAMBIF{ano_str}{mes_num_2d}'
-    
-    #1. PADRÃO 1 (2025): SEM O -IF-
-    if ano == 2025:
-        sufixo = f'-{ano_str}{mes_num_2d}.zip'
-        
-    #2. PADRÃO 2 (2015-2024): COM O -IF-
-    elif ano >= 2015 and ano <= 2024:
-        sufixo = f'-IF-{ano_str}{mes_num_2d}.zip'
-        
-    #3. EXCEÇÃO: Anos fora do padrão (2014)
-    else: 
-        #Não há lógica aplicada aqui.
         return None
-    
-    url_padrao = prefixo + sufixo 
-    
-    return{
-        'url': f"https://www.bcb.gov.br/content/estatisticas/rankingcambioinstituicoes/{url_padrao}",
-        'filename_csv': f"Ranking Instituição {ano_str} {mes_num_2d}.csv"
-        }
-    
 
+    mes_num_2d = data.strftime("%m")
+    ano_str = str(ano)
+
+    padroes = [
+        f'ESTATCAMBIF{ano_str}{mes_num_2d}-IF-{ano_str}{mes_num_2d}.zip',
+        f'ESTATCAMBIF{ano_str}{mes_num_2d}-{ano_str}{mes_num_2d}.zip',
+        f'ESTATCAMBIF{ano_str}{mes_num_2d}-IF_{ano_str}{mes_num_2d}.zip',
+        f'ESTATCAMBIF{ano_str}{mes_num_2d}-AT_{ano_str}-{mes_num_2d}.zip',
+        f'ESTATCAMBIF{ano_str}{mes_num_2d}-IF-{ano_str}-{mes_num_2d}.zip',
+        f'ESTATCAMBIF{ano_str}{mes_num_2d}IF-{ano_str}{mes_num_2d}.zip',
+        f'ESTATCAMBIF{ano_str}{mes_num_2d}-Ranking%20Institui%C3%A7%C3%A3o%20{ano_str}%20{mes_num_2d}.xls',
+        f'ESTATCABIF{ano_str}{mes_num_2d}IF-{ano_str}{mes_num_2d}.zip',
+    ]
+    
+    BASE_URL = "https://www.bcb.gov.br/content/estatisticas/rankingcambioinstituicoes/"
+
+    for padrao in padroes:
+        url = BASE_URL + padrao
+        try:
+            r = requests.head(url, timeout=5)
+            if r.status_code == 200:
+                print(f'URL encontrada (Padrão: {padrao})')
+                return url
+        except requests.RequestException:
+            continue
+            
+    return None
+
+# =======================================================
 # UNIFICAR BASES
-# ARQUIVO: new_lib.py (Função unificar_bases - Foco na Indentação)
+# =======================================================
+
+COLUNAS_PADRAO = [
+    "Rank", "Codigo_Instituicao", "Instituicao",
+    "Exportacao_Quant", "Exportacao_Valor", 
+    "Importacao_Quant", "Importacao_Valor",
+    "Transf_Exterior_Quant", "Transf_Exterior_Valor", 
+    "Transf_pExterior_Quant", "Transf_pExterior_Valor",
+    "Mercado_Primario_Quant", "Mercado_Primario_Valor",
+    "Interbancario_C_Quant", "Interbancario_C_Valor", 
+    "Interbancario_V_Quant", "Interbancario_V_Valor",
+    "Mercado_Interbancario_Quant", "Mercado_Interbancario_Valor", 
+    "Total_Geral_Quant", "Total_Geral_Valor",
+]
 
 def unificar_bases(pasta_csv):
     lista_dfs = []
-    arquivos = os.listdir(pasta_csv)
-    
+    padrao_limpo = re.compile(r'^ranking_(\d{4})-(\d{2})_mensal\.csv$', flags=re.IGNORECASE)
+    arquivos = sorted([f for f in os.listdir(pasta_csv) if padrao_limpo.match(f)])
+
+    if not arquivos:
+        arquivos = sorted([f for f in os.listdir(pasta_csv) if f.endswith('.csv') and not f.startswith('~')])
+        if not arquivos:
+            print(f'❌ Nenhum DataFrame CSV encontrado para unificar.')
+            return None
+        print(f'✅ Usando fallback: Encontrados {len(arquivos)} arquivos CSV com nomes não padronizados.')
+
+
     print(f'Iniciando unificação de {len(arquivos)} arquivos na pasta...')
-    
-    for nome_arquivo in arquivos: 
-        if nome_arquivo.endswith('.csv') and not nome_arquivo.startswith('~'):
-            caminho_completo = os.path.join(pasta_csv, nome_arquivo)
-            df = None
-            
-            # TENTATIVA 1: CSV com HEADER 4 (índice 4)
+
+    for nome_arquivo in arquivos:
+        caminho_completo = os.path.join(pasta_csv, nome_arquivo)
+        df = None
+        
+        match_padrao = padrao_limpo.match(nome_arquivo)
+        if match_padrao:
+            ano_str, mes_str = match_padrao.groups()
+        else:
+            partes_nome = nome_arquivo.split(' ')
+            if len(partes_nome) >= 4:
+                ano_str = partes_nome[2]
+                mes_str = partes_nome[3].split('.')[0].zfill(2)
+            else:
+                ano_str, mes_str = '9999', '99'
+
+        enc = detectar_encoding(caminho_completo)
+
+        headers = [4, 5, 6]
+        for header_idx in headers:
             try:
-                df = pd.read_csv(caminho_completo, sep=';', encoding='latin1', header=4, thousands='.')
+                df = pd.read_csv(caminho_completo, sep=';', encoding=enc, header=header_idx, thousands='.', skipinitialspace=True)
+                if df.shape[1] >= 10 and len(df) > 0:
+                    break
+                df = None
             except Exception:
                 pass
 
-            # TENTATIVA 2: CSV com HEADER 5 (índice 5)
-            if df is None: 
-                try:
-                    df = pd.read_csv(caminho_completo, sep=';', encoding='latin1', header=5, thousands='.')
-                except Exception: 
-                    pass
-                    
-            # TENTATIVA 3: EXCEL (XLS/XLSX disfarçado)
-            if df is None: 
-                try: 
-                    df = pd.read_excel(caminho_completo, header=4)
-                except Exception as e: 
-                    print(f'⚠️ Falha: Não foi possível ler {nome_arquivo}. Pulando arquivo.')
-                    continue # 🛑 Se tudo falhar, PULA O ARQUIVO. 
-                    
-            # BLOCO DE PROCESSAMENTO (EXECUTA SOMENTE SE A LEITURA FOI UM SUCESSO)
-            if df is not None: 
-                partes_nome = nome_arquivo.split(' ')
-                if len(partes_nome) >= 4:
-                    ano = partes_nome[2]
-                    mes = partes_nome[3].split('.')[0]
-                    df['Data_Ref'] = f'{ano}-{mes}'
-                        
-                lista_dfs.append(df)
-                print(f'-> {nome_arquivo} carregado ({len(df)} linhas).')
-                
-    # 🛑 ESTE É O BLOCO CRÍTICO: DEVE ESTAR FORA DO FOR LOOP, NO NÍVEL DA FUNÇÃO
-    # Remova todo o recuo anterior, garantindo que ele esteja no mesmo nível do 'for nome_arquivo in arquivos:'
-    if not lista_dfs: 
-        print(f'❌ Nenhum DataFrame CSV válido encontrado para unificar.')
-        return None
-    
-    df_consolidado = pd.concat(lista_dfs, ignore_index = True)
-    print(f'✅ Bases unificadas com sucesso! Total de linhas: {len(df_consolidado)}.')
-    
-    return df_consolidado # 🛑 ESTE É O RETURN QUE ESTAVA DANDO ERRO!
-    
-    # ETAPA DE TRATAMENTO DE DADOS: 
+        if df is None:
+             try: 
+                 df = pd.read_csv(
+                     caminho_completo,
+                     sep=';',
+                     skiprows=7,
+                     header=None,
+                     encoding=enc,
+                     engine='python'
+                 )
+             except Exception:
+                 pass
 
-def tratar_dados(df): 
+        if df is None or len(df) == 0:
+            try:
+                df = pd.read_excel(caminho_completo, header=4, skipfooter=1, engine='openpyxl')
+            except Exception:
+                print(f'⚠️ Falha: Não foi possível ler {nome_arquivo}. Pulando arquivo.')
+                continue
+
+        if df is not None and len(df) > 0:
+            
+            num_cols_df = df.shape[1]
+            if num_cols_df < len(COLUNAS_PADRAO):
+                 faltantes = len(COLUNAS_PADRAO) - num_cols_df
+                 for i in range(faltantes):
+                     df[f'Extra_Vazia_{i+1}'] = None
+            elif num_cols_df > len(COLUNAS_PADRAO):
+                 df = df.iloc[:, :len(COLUNAS_PADRAO)]
+            
+            df.columns = COLUNAS_PADRAO 
+
+            df['Data_Ref'] = f'{ano_str}-{mes_str}'
+            
+            lista_dfs.append(df)
+            print(f'-> {nome_arquivo} carregado ({len(df)} linhas).')
+
+    if not lista_dfs:
+        print(f'❌ Nenhum DataFrame válido encontrado para unificar.')
+        return None
+
+    df_consolidado = pd.concat(lista_dfs, ignore_index=True)
+    print(f'✅ Bases unificadas com sucesso! Total de linhas: {len(df_consolidado)}.')
+
+    return df_consolidado
+
+# =======================================================
+# TRATAMENTO DE DADOS
+# =======================================================
+def tratar_dados(df):
     
-    # 0. Checagem inicial de DF vazio
     if df is None or len(df) == 0:
         print("🛑 ERRO: DataFrame consolidado recebido é nulo ou vazio.")
         return None
 
-    # 1. REMOÇÃO DE LINHAS DE SUJEIRA E METADADOS
-    
-    # 🛑 ATUALIZAÇÃO 1: Remoção de Linhas de Metadados (TOTAL, Fonte, Obs.)
     filtro_remover = [
-        'TOTAL GERAL', 
-        'Fonte:', 
+        'TOTAL GERAL',
+        'Fonte:',
         'Obs.',
-        'TOTAL DE' # Adicionado um filtro genérico de Total
+        'TOTAL DE',
+        'Valor (US$)'
     ]
     
-    # Constrói o filtro de string
     filtro_completo = '|'.join(filtro_remover)
     
-    # 🛑 Assegura que a primeira coluna é string antes de filtrar
-    df.iloc[:, 0] = df.iloc[:, 0].astype(str)
+    df = df[~df['Instituicao'].astype(str).str.contains(filtro_completo, case=False, na=False)]
     
-    # Filtra: Remove todas as linhas que contenham as palavras de filtro na primeira coluna
-    df = df[~df.iloc[:, 0].str.contains(filtro_completo, case=False, na=False)]
-    
-    # 🛑 ATUALIZAÇÃO 2: Remove linhas que estão inteiramente vazias (NaN) na coluna Instituicao
-    df = df.dropna(subset=['Instituicao'])
+    df = df.dropna(subset=['Instituicao', 'Exportacao_Valor'])
     
     print("✅ Linhas de 'TOTAL GERAL' e metadados removidas.")
     
-    # 2. Checagem de DF vazio após filtros
     if len(df) == 0:
         print("🛑 ERRO: DataFrame ficou vazio após remover sujeira.")
         return None
 
-    # 3. RENOMEAR COLUNAS (Ajustado para 23 colunas, conforme seu debug)
-    novos_nomes = [ 
-        'Rank', 'Codigo_Instituicao', 'Instituicao', 
-        'Exportacao_Quant', 'Exportacao_Valor', 'Importacao_Quant', 'Importacao_Valor', 
-        'Transf_Exterior_Quant', 'Transf_Exterior_Valor', 'Transf_pExterior_Quant', 'Transf_pExterior_Valor', 
+    novos_nomes = [
+        'Rank', 'Codigo_Instituicao', 'Instituicao',
+        'Exportacao_Quant', 'Exportacao_Valor', 'Importacao_Quant', 'Importacao_Valor',
+        'Transf_Exterior_Quant', 'Transf_Exterior_Valor', 'Transf_pExterior_Quant', 'Transf_pExterior_Valor',
         'Mercado_Primario_Quant', 'Mercado_Primario_Valor',
         'Interbancario_C_Quant', 'Interbancario_C_Valor', 'Interbancario_V_Quant', 'Interbancario_V_Valor',
-        'Mercado_Interbancario_Quant', 'Mercado_Interbancario_Valor', 'Total_Geral_Quant', 'Total_Geral_Valor', 
-        'Extra_Vazia_1', 'Data_Ref' # Lista final de 23 nomes
+        'Mercado_Interbancario_Quant', 'Mercado_Interbancario_Valor', 'Total_Geral_Quant', 'Total_Geral_Valor',
     ]
-
-    num_cols_atual = len(df.columns)
-    print(f"DEBUG: Tratamento - Colunas recebidas: {num_cols_atual}")
     
-    # Renomeação: Usa a lista de novos nomes, truncando a lista para o tamanho real do DF
-    df.columns = novos_nomes[:num_cols_atual]
+    num_cols_atual = len(df.columns)
+    
+    nomes_reais = novos_nomes
+    if 'Data_Ref' in df.columns:
+         nomes_reais.append('Data_Ref')
+    
+    colunas_extras_no_df = [col for col in df.columns if col.startswith('Extra_Vazia_')]
+    for col_extra in colunas_extras_no_df:
+        nomes_reais.append(col_extra)
+
+    df.columns = nomes_reais[:num_cols_atual]
+    
     print("✅ Colunas renomeadas.")
     
-    # 4. FILTRAR DADOS INTERBANCÁRIOS (Remoção de Colunas)
-    cols_interbancarias = ['Interbancario_C_Valor', 'Interbancario_V_Valor', 
+    cols_interbancarias = ['Interbancario_C_Valor', 'Interbancario_V_Valor',
                            'Interbancario_C_Quant', 'Interbancario_V_Quant']
                            
     cols_to_drop = [col for col in cols_interbancarias if col in df.columns]
 
-    df_final = df.drop(columns=cols_to_drop)
+    df_final = df.drop(columns=cols_to_drop, errors='ignore')
     print("✅ Colunas interbancárias removidas.")
     
-    # 5. GARANTIR TIPOS NUMÉRICOS (Limpeza e Conversão)
     cols_valor_quant = [col for col in df_final.columns if 'Valor' in col or 'Quant' in col]
-    
+
     for col in cols_valor_quant:
-        # 🛑 Adição de pré-limpeza robusta para garantir que apenas números sejam passados
         if df_final[col].dtype == 'object':
             df_final[col] = (df_final[col]
-                             .astype(str) 
-                             .str.replace(r'[^\d\.\,]', '', regex=True) # Remove R$, espaços, etc.
-                             .str.replace('.', '', regex=False)        # Remove separadores de milhar
-                             .str.replace(',', '.', regex=False)        # Troca vírgula decimal por ponto
+                             .astype(str)
+                             .str.replace(r'[^\d\.\,\-]', '', regex=True)
+                             .str.replace('.', '', regex=False)
+                             .str.replace(',', '.', regex=False)
                              .str.strip()
                             )
-            
-        # Converte para numérico (errors='coerce' transforma falhas de conversão em NaN)
-        df_final[col] = pd.to_numeric(df_final[col], errors='coerce') 
+
+        df_final[col] = pd.to_numeric(df_final[col], errors='coerce')
         
     print("✅ Tipos de dados de valor e quantidade convertidos para numérico.")
     
-    return df_final
-
-    # 3. FILTRAR DADOS INTERBANCÁRIOS (Requisito Gobberman)
-    cols_interbancarias = ['Interbancario_C_Valor', 'Interbancario_V_Valor', 
-                           'Interbancario_C_Quant', 'Interbancario_V_Quant']
-                           
-    cols_to_drop = [col for col in cols_interbancarias if col in df.columns]
-
-    df_final = df.drop(columns=cols_to_drop, errors='ignore') # Adicionado errors='ignore' para robustez
-    print("✅ Colunas interbancárias removidas.")
-    
-    # 4. GARANTIR TIPOS NUMÉRICOS (Requisito 2.b.i)
-    # 4. GARANTIR TIPOS NUMÉRICOS (Requisito 2.b.i)
-cols_valor_quant = [col for col in df_final.columns if 'Valor' in col or 'Quant' in col]
-
-for col in cols_valor_quant:
-    # 🛑 SOLUÇÃO ROBUSTA: USAR REGEX PARA REMOVER TUDO, EXCETO DÍGITOS E PONTOS
-    if df_final[col].dtype == 'object':
-        df_final[col] = (df_final[col]
-                         .astype(str) 
-                         # Remove *qualquer* caractere que não seja dígito, vírgula ou ponto.
-                         .str.replace(r'[^\d\.\,]', '', regex=True) # <- REMOVE R$, ESPAÇOS, etc.
-                         .str.replace('.', '', regex=False) # Remove separadores de milhar (ponto)
-                         .str.replace(',', '.', regex=False) # Troca vírgula decimal por ponto
-                         .str.strip()
-                        )
-        
-    df_final[col] = pd.to_numeric(df_final[col], errors='coerce')
-
-    print("✅ Tipos de dados de valor e quantidade convertidos para numérico.")
-    
-    # 3. Checagem final: se o DF está vazio após o tratamento
     if len(df_final) == 0:
         print("🛑 ERRO: DataFrame final está vazio. Retornando None.")
         return None
         
     return df_final
-        
