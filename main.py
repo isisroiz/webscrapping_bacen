@@ -16,7 +16,7 @@ print(nl)
 print(pd)
 
 
-DESTINO_BASE = r'C:\Users\Isis\Documents\webscrapping_bacen\dados'
+DESTINO_BASE = r'C:\Users\Isis\Documents\webscrapping_bacen\dados' # ALVO DE CONFIGURAÇÃO!
 nl.criar_pasta(DESTINO_BASE)
 DESTINO_ZIP_FILES = os.path.join(DESTINO_BASE, 'zipfiles')
 nl.criar_pasta(DESTINO_ZIP_FILES)
@@ -73,12 +73,19 @@ df_limpo = None
 if df_consolidado is not None:
     try:
         df_limpo = nl.tratar_dados(df_consolidado)
+        
+        # CHAMA A FASE DE ANÁLISE!
+        if df_limpo is not None:
+            nl.analisar_dados(df_limpo)
+
     except Exception as e:
         print(f"ERRO CRÍTICO no tratamento dos dados: {e}")
 
+# Requisito 3.b: Salvar arquivo final em disco
 if df_limpo is not None and len(df_limpo) > 0:
     NOME_ARQUIVO_FINAL = os.path.join(DESTINO_BASE, 'base_final_tratada_unica.csv')
 
+    # Correção do Encoding
     df_limpo.to_csv(NOME_ARQUIVO_FINAL, index=False, sep=';', encoding= 'utf-8-sig')
 
     print("\n========================================================")

@@ -337,3 +337,103 @@ def tratar_dados(df):
         return None
         
     return df_final
+
+# =======================================================
+# FASE DE ANÁLISE DE DADOS (9 PERGUNTAS)
+# =======================================================
+
+def analisar_dados(df):
+    """Realiza a análise dos dados e responde às 9 perguntas do case."""
+    
+    if df is None or df.empty:
+        print("\n🛑 ERRO: DataFrame vazio ou nulo para a fase de análise.")
+        return
+
+    print("\n" + "="*70)
+    print("INICIANDO FASE DE ANÁLISE: RANKING DE CÂMBIO")
+    print("="*70)
+    
+    # 1. Qual é o valor total de operações de câmbio (Total_Geral_Valor) por ano?
+    print("\n1. Valor total de operações de câmbio por ano:")
+    df['Ano'] = df['Data_Ref'].str[:4]
+    valor_por_ano = df.groupby('Ano')['Total_Geral_Valor'].sum().apply(lambda x: f"US$ {x:,.2f}").str.replace(',', '_').str.replace('.', ',').str.replace('_', '.')
+    print(valor_por_ano)
+    print("-" * 50)
+    
+    # 2. Qual o ranking das 5 instituições financeiras com maior valor total de operações em todo o período?
+    print("\n2. Top 5 instituições com maior valor total de operações (Período Completo):")
+    top_5_inst = df.groupby('Instituicao')['Total_Geral_Valor'].sum().nlargest(5).apply(lambda x: f"US$ {x:,.2f}").str.replace(',', '_').str.replace('.', ',').str.replace('_', '.')
+    print(top_5_inst)
+    print("-" * 50)
+    
+    # 3. Qual o valor total de Importação e Exportação (Valor) ao longo dos anos?
+    print("\n3. Valor total de Importação e Exportação (Valor) por ano:")
+    df_impexp = df.groupby('Ano')[['Importacao_Valor', 'Exportacao_Valor']].sum()
+    df_impexp['Importacao_Valor'] = df_impexp['Importacao_Valor'].apply(lambda x: f"US$ {x:,.2f}").str.replace(',', '_').str.replace('.', ',').str.replace('_', '.')
+    df_impexp['Exportacao_Valor'] = df_impexp['Exportacao_Valor'].apply(lambda x: f"US$ {x:,.2f}").str.replace(',', '_').str.replace('.', ',').str.replace('_', '.')
+    print(df_impexp)
+    print("-" * 50)
+    
+    # 4. Qual a Instituição com maior valor de Exportação no último ano completo?
+    # O último ano completo é o penúltimo ano, caso o ano atual não esteja finalizado.
+    ultimo_ano_base = df['Ano'].max()
+    # Verifica se há meses completos no ano atual; se não houver 12 meses, usa o ano anterior
+    if df[df['Ano'] == ultimo_ano_base]['Data_Ref'].nunique() < 12:
+         penultimo_ano = str(int(ultimo_ano_base) - 1)
+    else:
+         penultimo_ano = ultimo_ano_base # Se o ano atual estiver completo (12 meses)
+    
+    df_penultimo = df[df['Ano'] == penultimo_ano]
+    if not df_penultimo.empty:
+        top_exp_penultimo = df_penultimo.groupby('Instituicao')['Exportacao_Valor'].sum().nlargest(1)
+        valor_formatado = f"US$ {top_exp_penultimo.iloc[0]:,.2f}".replace(',', '_').replace('.', ',').replace('_', '.')
+        print(f"\n4. Instituição com maior Exportação em {penultimo_ano}:")
+        print(f"{top_exp_penultimo.index[0]} | Valor: {valor_formatado}")
+    else:
+        print(f"\n4. Não foi possível encontrar dados para o ano {penultimo_ano}.")
+    print("-" * 50)
+    
+    # 5. Qual a Instituição com maior valor de Importação no ano de 2018?
+    print("\n5. Instituição com maior Importação em 2018:")
+    df_2018 = df[df['Ano'] == '2018']
+    if not df_2018.empty:
+        top_imp_2018 = df_2018.groupby('Instituicao')['Importacao_Valor'].sum().nlargest(1)
+        valor_formatado = f"US$ {top_imp_2018.iloc[0]:,.2f}".replace(',', '_').replace('.', ',').replace('_', '.')
+        print(f"{top_imp_2018.index[0]} | Valor: {valor_formatado}")
+    else:
+        print("\n5. Não há dados para 2018.")
+    print("-" * 50)
+    
+    # 6. Qual o valor total de Transferências do Exterior e Transferências para o Exterior por ano?
+    print("\n6. Valor total de Transferências (Entrada/Saída) por ano:")
+    df_transf = df.groupby('Ano')[['Transf_Exterior_Valor', 'Transf_pExterior_Valor']].sum()
+    df_transf['Transf_Exterior_Valor'] = df_transf['Transf_Exterior_Valor'].apply(lambda x: f"US$ {x:,.2f}").str.replace(',', '_').str.replace('.', ',').str.replace('_', '.')
+    df_transf['Transf_pExterior_Valor'] = df_transf['Transf_pExterior_Valor'].apply(lambda x: f"US$ {x:,.2f}").str.replace(',', '_').str.replace('.', ',').str.replace('_', '.')
+    print(df_transf)
+    print("-" * 50)
+    
+    # 7. Qual o maior volume de Transações (Quantidade) de Exportação em 2020 (mês/instituição)?
+    print("\n7. Maior volume (Quantidade) de Exportação em 2020 (Mês/Instituição):")
+    df_2020 = df[df['Ano'] == '2020']
+    if not df_2020.empty:
+        idx_max = df_2020['Exportacao_Quant'].idxmax()
+        resultado = df_2020.loc[idx_max, ['Data_Ref', 'Instituicao', 'Exportacao_Quant']]
+        quant_formatada = f"{resultado['Exportacao_Quant']:,.0f}".replace(',', '_').replace('.', ',').replace('_', '.')
+        print(f"Mês/Ano: {resultado['Data_Ref']} | Instituição: {resultado['Instituicao']} | Quantidade: {quant_formatada}")
+    else:
+        print("\n7. Não há dados para 2020.")
+    print("-" * 50)
+    
+    # 8. Qual a média de valor de operações de câmbio por instituição ao longo de todo o período?
+    print("\n8. Média de valor de operações de câmbio por instituição (Período Completo):")
+    media_por_inst = df.groupby('Instituicao')['Total_Geral_Valor'].mean().sort_values(ascending=False).apply(lambda x: f"US$ {x:,.2f}").str.replace(',', '_').str.replace('.', ',').str.replace('_', '.')
+    print(media_por_inst.head(5))
+    print("[... Exibindo apenas as 5 maiores médias ...]")
+    print("-" * 50)
+
+    # 9. Qual o total de operações (Valor) do Mercado Primário de Câmbio em todo o período?
+    print("\n9. Valor Total de Operações do Mercado Primário de Câmbio (Período Completo):")
+    total_primario = df['Mercado_Primario_Valor'].sum()
+    valor_formatado = f"US$ {total_primario:,.2f}".replace(',', '_').replace('.', ',').replace('_', '.')
+    print(f"Valor Total: {valor_formatado}")
+    print("="*70)
