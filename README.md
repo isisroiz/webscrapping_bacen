@@ -1,61 +1,31 @@
-# 🏦 Projeto de Análise de Câmbio: Almeida LTDA & Banco Central do Brasil
+# 🏦 Projeto de Análise de Câmbio: Ranking BACEN
 
-Este projeto implementa uma solução de Engenharia de Dados e Análise em Python para atender aos requisitos da Almeida LTDA, conforme detalhado no CASE-EDUMI 2025.
-O objetivo é automatizar a aquisição, unificação e tratamento dos dados de Ranking de Câmbio do Banco Central do Brasil (BACEN), fornecendo métricas para a tomada de decisão sobre operações cambiais.
+Este projeto implementa uma solução robusta de Engenharia de Dados e Análise em Python para adquirir, unificar e tratar os dados históricos de Ranking de Câmbio do Banco Central do Brasil (BACEN), fornecendo uma base consolidada para análises futuras.
 
 ---
 
-## 🛠️ Tecnologias Utilizadas
+## 🛠️ Tecnologias e Bibliotecas
 
-* **Python:** Linguagem principal para automação.
-* **Pandas:** Essencial para manipulação, unificação e análise dos dados.
-* **Requests & Zipfile:** Utilizados para a requisição HTTP e extração de arquivos ZIP diretamente do site do BACEN.
-* **chardet & unicodedata:** Bibliotecas adicionais para garantir a leitura correta de diferentes *encodings* de arquivo e padronização de nomes.
-* **Módulos Próprios (new_lib.py):** Arquitetura organizada em módulos (biblioteca própria) para garantir a reutilização e limpeza do código (requisito do Case).
+O projeto é construído em Python e utiliza uma arquitetura modular (`new_lib.py`) para isolar as lógicas de negócio.
+
+| Módulo/Biblioteca | Foco Principal | Contribuição no Projeto |
+| :--- | :--- | :--- |
+| **`pandas`** | Análise e Engenharia de Dados | Unificação de todos os CSVs/XLSX mensais em um único DataFrame, limpeza, tipagem e filtragem de colunas. |
+| **`requests`** | Requisição Web | Download das bases ZIP do BACEN, testando dinamicamente múltiplos padrões de URL. |
+| **`zipfile` / `io`** | Manipulação de Arquivos | Extração dos dados do ZIP em memória (`io.BytesIO`) e salvamento em disco. |
+| **`chardet`** | Robustez de Leitura | Detecção automática do *encoding* de cada arquivo CSV, resolvendo problemas de acentuação (UTF-8, Latin1, etc.) durante a unificação. |
+| **`openpyxl`** | Manipulação de Arquivos | Suporte para leitura de arquivos `.xlsx` que o BACEN ocasionalmente disponibiliza, garantindo a ingestão completa. |
+| **`new_lib.py`** | Arquitetura | Módulo próprio que isola e organiza toda a lógica de negócio (download, unificar e tratar), promovendo a modularidade do código. |
 
 ---
 
 ## 📊 Estrutura do Projeto
 
-O projeto é dividido em três fases metodológicas (Aquisição, Tratamento e Análise).
+O projeto é dividido em fases metodológicas de Aquisição, Tratamento e Análise.
 
 | Arquivo/Pasta | Descrição |
 | :--- | :--- |
-| `main.py` | Script principal. Responsável por orquestrar a execução das fases, controlar o laço de repetição (`for`) e iniciar a análise final. |
-| `new_lib.py` | Módulo (biblioteca própria) com funções utilitárias: `criar_pasta`, `baixar_e_extrair_zip`, `unificar_bases`, `tratar_dados`, etc. |
-| `dados/` | Pasta de saída. Armazena os arquivos CSV baixados do BACEN (`zipfiles/`) e o resultado final em `base_final_tratada_unica.csv`. |
+| `main.py` | Script principal. Orquestra a execução das fases de aquisição, tratamento e, posteriormente, inicia a análise final. |
+| `new_lib.py` | Biblioteca customizada contendo todas as funções de utilidade, download (`baixar_e_extrair_zip`), unificação (`unificar_bases`) e tratamento (`tratar_dados`). |
+|
 
----
-
-## 🚀 Como Executar o Projeto
-
-1.  **Pré-requisitos:** Certifique-se de ter o Python instalado e as bibliotecas essenciais: `pandas`, `requests`, `openpyxl`, **`chardet`** e `unidecode`. Instale-as via terminal:
-    ```bash
-    pip install pandas requests openpyxl chardet
-    ```
-2.  **Configuração de Caminho:** O script `main.py` utiliza caminhos absolutos. Altere as variáveis `DESTINO_BASE` no `main.py` para o caminho local da sua máquina.
-3.  **Execução:** Abra o terminal no diretório do projeto e execute:
-    ```bash
-    python main.py
-    ```
-
----
-
-## ⚙️ Funcionalidades Automatizadas
-
-A implementação do projeto inclui soluções de Engenharia de Dados para garantir a qualidade da base:
-
-* **Criação Estrutural de Pastas:** Garante que a estrutura `dados/` e `dados/zipfiles/` exista.
-* **Automação Híbrida de Download:** Utiliza a lógica de laço de repetição (`for`) para baixar os dados de 2015 ao presente, testando **múltiplos padrões de URL** do BACEN.
-* **Tratamento de Exceção (2014):** Contempla uma rotina separada para a aquisição dos dados de 2014, cujas URLs não seguem um padrão regular.
-* **Unificação Inteligente:** Lê **todos** os arquivos CSV extraídos (e `.xlsx` em caso de exceção), aplicando detecção de *encoding* (`chardet`) para garantir a correta leitura dos caracteres especiais (acentos, símbolos).
-* **Padronização de Saída:** O arquivo final (`base_final_tratada_unica.csv`) é salvo no formato CSV, com separador `;` e **encoding `utf-8-sig`** para evitar erros de caracteres e garantir a compatibilidade com o Excel.
-
----
-
-## Próximos Passos
-
-Após a aquisição e tratamento (fase concluída), o foco é:
-
-1.  Desenvolver a análise de dados para responder às 9 perguntas do case.
-2.  Desenvolver a criação do dashboard de visualização.
