@@ -10,12 +10,14 @@ O projeto é construído em Python e utiliza uma arquitetura modular (`new_lib.p
 
 | Módulo/Biblioteca | Foco Principal | Contribuição no Projeto |
 | :--- | :--- | :--- |
-| **`pandas`** | Análise e Engenharia de Dados | Unificação de todos os CSVs/XLSX mensais em um único DataFrame, limpeza, tipagem e filtragem de colunas. |
+| **`pandas`** | Análise e Engenharia de Dados | Unificação, limpeza, tratamento do DataFrame e resposta às 9 perguntas do case. |
 | **`requests`** | Requisição Web | Download das bases ZIP do BACEN, testando dinamicamente múltiplos padrões de URL. |
 | **`zipfile` / `io`** | Manipulação de Arquivos | Extração dos dados do ZIP em memória (`io.BytesIO`) e salvamento em disco. |
-| **`chardet`** | Robustez de Leitura | Detecção automática do *encoding* de cada arquivo CSV, resolvendo problemas de acentuação (UTF-8, Latin1, etc.) durante a unificação. |
-| **`openpyxl`** | Manipulação de Arquivos | Suporte para leitura de arquivos `.xlsx` que o BACEN ocasionalmente disponibiliza, garantindo a ingestão completa. |
-| **`new_lib.py`** | Arquitetura | Módulo próprio que isola e organiza toda a lógica de negócio (download, unificar e tratar), promovendo a modularidade do código. |
+| **`chardet`** | Robustez de Leitura | Detecção automática do *encoding* de cada arquivo CSV, resolvendo problemas de acentuação. |
+| **`openpyxl`** | Manipulação de Arquivos | Suporte para leitura de arquivos `.xlsx` (Exceções do BACEN). |
+| **`plotly` / `plotly.express`** | Visualização Interativa | Geração dos gráficos dinâmicos (tendências, participação) exibidos no dashboard. |
+| **`streamlit`** | Dashboard / Deployment | Framework para transformar o código Python em uma aplicação web interativa, hospedada na nuvem. |
+| **`new_lib.py`** | Arquitetura | Módulo próprio que isola e organiza toda a lógica de negócio (download, unificar, tratar e analisar). |
 
 ---
 
@@ -61,9 +63,23 @@ A implementação inclui soluções robustas de Engenharia de Dados para garanti
 
 ---
 
-## Próximos Passos
+## 🚀 Status e Próximos Passos
 
-A fase de Aquisição e Tratamento está concluída. O foco agora é:
+A fase de Engenharia de Dados (Aquisição e Tratamento) e a fase de Visualização estão concluídas. O projeto alcançou o objetivo de entregar uma base consolidada e um dashboard interativo.
 
-1.  Desenvolver a análise de dados para responder às 9 perguntas do case.
-2.  Desenvolver a criação do dashboard de visualização.
+| Fase | Status | Detalhes |
+| :--- | :--- | :--- |
+| **Aquisição & Tratamento** | **CONCLUÍDA** | Base `base_final_tratada_unica.csv` gerada, com saneamento e padronização histórica. |
+| **Análise de Dados** | **CONCLUÍDA** | As 9 perguntas de negócio do CASE-EDUMI 2025 foram respondidas e integradas ao dashboard. |
+| **Visualização (Dashboard)** | **CONCLUÍDA** | Aplicação web interativa desenvolvida com Plotly e Streamlit. |
+
+---
+
+## 🌐 Acesso ao Dashboard (Deployment)
+
+O resultado da análise está acessível publicamente na nuvem, eliminando qualquer requisito de instalação local para visualização.
+
+| Plataforma | URL de Acesso | Nota |
+| :--- | :--- | :--- |
+| **Streamlit Community Cloud** | **[Acessar o Dashboard de Câmbio](https://webscrappingbacen-jx9lqy3mmcyekfa5ihrzbf.streamlit.app)** | O servidor faz o *deploy* automático, lendo as dependências a partir do `requirements.txt`. |
+---
